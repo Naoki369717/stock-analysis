@@ -7,10 +7,11 @@ import os
 
 from analyzer import fetch_stock_daily, fetch_margin_history, analyze_supply_demand
 from ai_advisor import generate_report_cards
+from screener import scan_god_stocks
 
 # ページ基本設定
 st.set_page_config(
-    page_title="需給レーダー | 株式需給分析",
+    page_title="需給レーダー | 株式需給分析＆神銘柄発掘",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -53,7 +54,7 @@ if "stock_list" not in st.session_state:
 if "selected_code" not in st.session_state:
     st.session_state.selected_code = "285A"
 
-# モダンUI ＆ ペイン（カード）専用CSS
+# モダンUI ＆ ペイン専用CSS
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap');
@@ -151,15 +152,10 @@ st.markdown("""
         border: 1px solid #e2e8f0;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
     }
-    .topic-card-alert {
-        border-left: 5px solid #ef4444;
-    }
-    .topic-card-caution {
-        border-left: 5px solid #f59e0b;
-    }
-    .topic-card-safe {
-        border-left: 5px solid #10b981;
-    }
+    .topic-card-alert { border-left: 5px solid #ef4444; }
+    .topic-card-caution { border-left: 5px solid #f59e0b; }
+    .topic-card-safe { border-left: 5px solid #10b981; }
+
     .card-header-row {
         display: flex;
         justify-content: space-between;
@@ -194,6 +190,22 @@ st.markdown("""
         line-height: 1.6;
         margin: 0;
     }
+
+    /* 神銘柄ランキングカード */
+    .screener-card {
+        background: white;
+        border-radius: 14px;
+        padding: 14px 16px;
+        margin-bottom: 12px;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+    }
+    .rank-num {
+        font-size: 1.1rem;
+        font-weight: 800;
+        color: #2563eb;
+        margin-right: 6px;
+    }
     
     /* タブデザイン */
     .stTabs [data-baseweb="tab-list"] {
@@ -220,7 +232,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------
-# ① サイドバー：銘柄追加・管理・API設定
+# ① サイドバー：銘柄追加・管理
 # -------------------------------------------------------------
 with st.sidebar:
     st.markdown("### ⚙️ 銘柄の選択と追加")
@@ -251,17 +263,6 @@ with st.sidebar:
             save_stocks(st.session_state.stock_list)
             st.session_state.selected_code = new_code
             st.success(f"{new_code} ({display_name}) を登録しました！")
-            st.rerun()
-
-    custom_keys = [k for k in st.session_state.stock_list.keys() if k not in INITIAL_STOCKS]
-    if custom_keys:
-        st.markdown("#### 🗑️ 追加した銘柄の削除")
-        del_target = st.selectbox("削除する銘柄", options=custom_keys, format_func=lambda x: f"{x} - {st.session_state.stock_list[x]}")
-        if st.button("銘柄を削除", use_container_width=True):
-            del st.session_state.stock_list[del_target]
-            save_stocks(st.session_state.stock_list)
-            if st.session_state.selected_code == del_target:
-                st.session_state.selected_code = "285A"
             st.rerun()
 
 # -------------------------------------------------------------
@@ -344,8 +345,10 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# タブ表示
-tab1, tab2, tab3 = st.tabs(["💡 需給診断ペイン", "📊 チャート分析", "📋 信用残高データ"])
+# -------------------------------------------------------------
+# タブ表示（★4つのタブ構成に拡張）
+# -------------------------------------------------------------
+tab1, tab2, tab3, tab4 = st.tabs(["💡 需給診断ペイン", "💎 神銘柄発掘", "📊 チャート分析", "📋 信用残高データ"])
 
 with tab1:
     st.markdown("#### 🔍 テーマ別 需給診断")
@@ -371,6 +374,46 @@ with tab1:
         """, unsafe_allow_html=True)
 
 with tab2:
+    st.markdown("#### 💎 神銘柄レーダー（需給スクリーニング）")
+    st.caption("注目主力・テーマ銘柄の中から「アク抜け・底打ち先行」「青天井ブレイク」の優良株をランキング抽出")
+    
+    if st.button("🚀 今すぐ最新の需給ランキングをスキャン", use_container_width=True):
+        with st.spinner("注目銘柄の需給データと出来高回転を高速スキャン中..."):
+            god_list = scan_god_stocks()
+            st.session_state.god_list = god_list
+            st.success(f"スキャン完了！ {len(god_list)} 銘柄を需給スコア順に抽出しました。")
+
+    if "god_list" in st.session_state and st.session_state.god_list:
+        for idx, item in enumerate(st.session_state.god_list):
+            st.markdown(f"""
+            <div class="screener-card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                    <div>
+                        <span class="rank-num">#{idx+1}</span>
+                        <strong style="font-size:1.05rem;">[{item['code']}] {item['name']}</strong>
+                    </div>
+                    <span class="card-badge {item['badge']}">{item['tag']}</span>
+                </div>
+                <div style="font-size:0.83rem; color:#64748b; margin-bottom:6px;">
+                    株価: <strong>{item['price']:,.0f}円</strong> | 
+                    買値乖離: <strong>{item['divergence']:+.1f}%</strong> | 
+                    買い残増減: <strong>{item['change_pct']:+.1f}%</strong> | 
+                    消化: <strong>{item['turnover_days']}日分</strong>
+                </div>
+                <div style="font-size:0.82rem; color:#334155; line-height:1.45; background:#f8fafc; padding:8px 10px; border-radius:8px;">
+                    {item['desc']}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # ワンクリックでその銘柄の個別分析へ飛ぶボタン
+            if st.button(f"👉 [{item['code']}] {item['name']} の詳細分析を見る", key=f"btn_jump_{item['code']}", use_container_width=True):
+                st.session_state.selected_code = item['code']
+                st.rerun()
+    else:
+        st.info("上のボタンを押すと、半導体・AIインフラ・防衛・主力株などから『今、需給が最も良好な銘柄』を自動分析してランキング表示します。")
+
+with tab3:
     fig = make_subplots(
         rows=2, cols=1,
         shared_xaxes=True,
@@ -434,7 +477,7 @@ with tab2:
         }
     )
 
-with tab3:
+with tab4:
     display_df = df_margin.copy()
     display_df["date"] = display_df["date"].dt.strftime("%Y-%m-%d")
     st.dataframe(
