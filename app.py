@@ -6,7 +6,7 @@ import json
 import os
 
 from analyzer import fetch_stock_daily, fetch_margin_history, analyze_supply_demand
-from ai_advisor import generate_ai_report
+from ai_advisor import generate_report_cards
 
 # ページ基本設定
 st.set_page_config(
@@ -19,9 +19,9 @@ st.set_page_config(
 # 銘柄保存ファイルのパス
 CUSTOM_STOCKS_FILE = "custom_stocks.json"
 
-# 初期デフォルト銘柄リスト
 INITIAL_STOCKS = {
     "285A": "キオクシアHD",
+    "5801": "古河電気工業",
     "6723": "ルネサスエレクトロニクス",
     "6857": "アドバンテスト",
     "8035": "東京エレクトロン",
@@ -30,7 +30,6 @@ INITIAL_STOCKS = {
 }
 
 def load_stocks() -> dict:
-    """登録銘柄を読み込む"""
     stocks = INITIAL_STOCKS.copy()
     if os.path.exists(CUSTOM_STOCKS_FILE):
         try:
@@ -42,21 +41,19 @@ def load_stocks() -> dict:
     return stocks
 
 def save_stocks(stocks: dict):
-    """登録銘柄を保存する"""
     try:
         with open(CUSTOM_STOCKS_FILE, "w", encoding="utf-8") as f:
             json.dump(stocks, f, ensure_ascii=False, indent=2)
     except Exception:
         pass
 
-# セッション状態の初期化
 if "stock_list" not in st.session_state:
     st.session_state.stock_list = load_stocks()
 
 if "selected_code" not in st.session_state:
     st.session_state.selected_code = "285A"
 
-# さわやかなモダンUIデザイン用CSS
+# モダンUI ＆ ペイン（カード）専用CSS
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap');
@@ -69,12 +66,10 @@ st.markdown("""
         background-color: #f8fafc;
     }
     
-    /* 右上の不要なメニュー・フッター・Manage appを非表示 */
     #MainMenu, footer, .stDeployButton {
         display: none !important;
     }
     
-    /* サイドバー開閉トグルボタン（>>）を押しやすく目立たせる */
     [data-testid="stSidebarCollapsedControl"] {
         display: block !important;
         visibility: visible !important;
@@ -84,7 +79,6 @@ st.markdown("""
         margin: 6px 0 0 6px;
     }
 
-    /* アプリタイトルバー */
     .app-header {
         background: linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%);
         color: white;
@@ -106,40 +100,6 @@ st.markdown("""
         color: #e0f2fe;
         font-size: 0.78rem;
         margin: 4px 0 0 0;
-    }
-
-    /* 需給警告・ステータスバナー */
-    .status-banner-alert {
-        background-color: #fff1f2;
-        border-left: 5px solid #f43f5e;
-        border-radius: 12px;
-        padding: 12px 14px;
-        margin-bottom: 16px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-    }
-    .status-banner-normal {
-        background-color: #f0fdf4;
-        border-left: 5px solid #22c55e;
-        border-radius: 12px;
-        padding: 12px 14px;
-        margin-bottom: 16px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-    }
-    .status-title {
-        font-weight: 700;
-        font-size: 0.92rem;
-        margin-bottom: 4px;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-    }
-    .status-alert-title { color: #e11d48; }
-    .status-normal-title { color: #16a34a; }
-    .status-body {
-        color: #475569;
-        font-size: 0.82rem;
-        line-height: 1.45;
-        margin: 0;
     }
 
     /* 指標カードグリッド */
@@ -182,6 +142,59 @@ st.markdown("""
     .sub-up { color: #22c55e; }
     .sub-neutral { color: #64748b; }
 
+    /* ペイン表示（診断カード） */
+    .topic-card {
+        background: white;
+        border-radius: 16px;
+        padding: 16px 18px;
+        margin-bottom: 14px;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+    }
+    .topic-card-alert {
+        border-left: 5px solid #ef4444;
+    }
+    .topic-card-caution {
+        border-left: 5px solid #f59e0b;
+    }
+    .topic-card-safe {
+        border-left: 5px solid #10b981;
+    }
+    .card-header-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+    }
+    .card-theme {
+        font-size: 0.85rem;
+        font-weight: 700;
+        color: #1e293b;
+    }
+    .card-badge {
+        font-size: 0.68rem;
+        padding: 3px 8px;
+        border-radius: 20px;
+        font-weight: 600;
+    }
+    .badge-alert { background: #fee2e2; color: #b91c1c; }
+    .badge-caution { background: #fef3c7; color: #b45309; }
+    .badge-safe { background: #d1fae5; color: #047857; }
+    
+    .card-topic {
+        font-size: 1.02rem;
+        font-weight: 700;
+        color: #0f172a;
+        margin-bottom: 8px;
+        line-height: 1.4;
+    }
+    .card-desc {
+        font-size: 0.84rem;
+        color: #475569;
+        line-height: 1.6;
+        margin: 0;
+    }
+    
     /* タブデザイン */
     .stTabs [data-baseweb="tab-list"] {
         gap: 6px;
@@ -212,7 +225,6 @@ st.markdown("""
 with st.sidebar:
     st.markdown("### ⚙️ 銘柄の選択と追加")
     
-    # 登録済みリストから選択
     stock_options = list(st.session_state.stock_list.keys())
     current_idx = stock_options.index(st.session_state.selected_code) if st.session_state.selected_code in stock_options else 0
     
@@ -241,7 +253,6 @@ with st.sidebar:
             st.success(f"{new_code} ({display_name}) を登録しました！")
             st.rerun()
 
-    # 銘柄削除（デフォルト以外）
     custom_keys = [k for k in st.session_state.stock_list.keys() if k not in INITIAL_STOCKS]
     if custom_keys:
         st.markdown("#### 🗑️ 追加した銘柄の削除")
@@ -253,15 +264,8 @@ with st.sidebar:
                 st.session_state.selected_code = "285A"
             st.rerun()
 
-    st.markdown("---")
-    api_key_input = st.text_input("Gemini API Key (更新用)", type="password")
-    if api_key_input:
-        with open(".env", "w", encoding="utf-8") as f:
-            f.write(f"GEMINI_API_KEY={api_key_input}\n")
-        st.success("APIキーを更新しました")
-
 # -------------------------------------------------------------
-# ② 画面上部：ワンタップ銘柄切替 ＆ 簡易追加アコーディオン
+# ② 画面上部：ワンタップ銘柄切替 ＆ 簡易追加
 # -------------------------------------------------------------
 with st.expander("🔍 銘柄の切替・新規追加（ここをタップ）", expanded=False):
     col_sel1, col_sel2 = st.columns([1, 1])
@@ -305,30 +309,14 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-with st.spinner(f"【{stock_name} ({selected_code})】の需給データを取得・計算中..."):
+with st.spinner(f"【{stock_name} ({selected_code})】の需給データを分析中..."):
     try:
         df_price = fetch_stock_daily(ticker_code, period="6mo")
         df_margin = fetch_margin_history(ticker_code)
         summary = analyze_supply_demand(df_price, df_margin)
     except Exception as e:
-        st.error(f"データ取得エラー: 銘柄コード「{selected_code}」のデータを取得できませんでした。コードが正しいかご確認ください。({e})")
+        st.error(f"データ取得エラー: 銘柄コード「{selected_code}」のデータを取得できませんでした。({e})")
         st.stop()
-
-# ステータス・スワップ警告バナー
-if summary["is_swapping"]:
-    st.markdown(f"""
-    <div class="status-banner-alert">
-        <div class="status-title status-alert-title">⚠️ 【需給警告】ポジションの入れ替わり（スワップ）を検知</div>
-        <p class="status-body">{summary['swap_comment']}</p>
-    </div>
-    """, unsafe_allow_html=True)
-else:
-    st.markdown(f"""
-    <div class="status-banner-normal">
-        <div class="status-title status-normal-title">✅ 需給ステータス正常</div>
-        <p class="status-body">{summary['swap_comment']}</p>
-    </div>
-    """, unsafe_allow_html=True)
 
 # 指標カード（2x2グリッド）
 st.markdown(f"""
@@ -339,7 +327,7 @@ st.markdown(f"""
         <div class="metric-sub sub-neutral">基準日: {summary['latest_date']}</div>
     </div>
     <div class="metric-card">
-        <div class="metric-label">推定しこり買値 (VWAP)</div>
+        <div class="metric-label">推定平均買値 (VWAP)</div>
         <div class="metric-value">{summary['vwap_est_buy_price']:,.0f} <span style="font-size:0.8rem; font-weight:normal;">円</span></div>
         <div class="metric-sub sub-down">{summary['pnl_divergence_pct']:+.1f}% 乖離</div>
     </div>
@@ -357,14 +345,37 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # タブ表示
-tab1, tab2, tab3 = st.tabs(["📊 チャート分析", "🤖 AI需給診断", "📋 信用残高データ"])
+tab1, tab2, tab3 = st.tabs(["💡 需給診断ペイン", "📊 チャート分析", "📋 信用残高データ"])
 
 with tab1:
+    st.markdown("#### 🔍 テーマ別 需給診断")
+    st.caption("専門用語を平易に噛み砕き、トピックと解説のペイン形式で整理しています")
+    
+    cards = generate_report_cards(summary, stock_name=stock_name, code=selected_code)
+    
+    for card in cards:
+        border_cls = f"topic-card-{card['status']}"
+        badge_cls = f"badge-{card['status']}"
+        
+        st.markdown(f"""
+        <div class="topic-card {border_cls}">
+            <div class="card-header-row">
+                <span class="card-theme">{card['theme']}</span>
+                <span class="card-badge {badge_cls}">{card['tag']}</span>
+            </div>
+            <div class="card-topic">{card['topic']}</div>
+            <div class="card-desc">
+                {card['desc'].strip().replace(chr(10), '<br>')}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+with tab2:
     fig = make_subplots(
         rows=2, cols=1,
         shared_xaxes=True,
         vertical_spacing=0.08,
-        subplot_titles=("株価推移 & 推定しこりゾーン", "信用買い残高 (株)"),
+        subplot_titles=("株価推移 & 推定平均買値ライン", "信用買い残高 (株)"),
         row_heights=[0.65, 0.35]
     )
     
@@ -384,7 +395,7 @@ with tab1:
         line_dash="dash",
         line_color="#ef4444",
         line_width=1.8,
-        annotation_text=f"しこり買値 ({summary['vwap_est_buy_price']:,.0f}円)",
+        annotation_text=f"平均買値 ({summary['vwap_est_buy_price']:,.0f}円)",
         annotation_position="bottom right",
         annotation_font=dict(color="#ef4444", size=10),
         row=1, col=1
@@ -422,11 +433,6 @@ with tab1:
             "displayModeBar": False
         }
     )
-
-with tab2:
-    with st.spinner("需給構造を診断中..."):
-        ai_report = generate_ai_report(summary, stock_name=stock_name, code=selected_code)
-    st.markdown(ai_report)
 
 with tab3:
     display_df = df_margin.copy()
