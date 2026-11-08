@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import json
 import os
 
 from analyzer import fetch_stock_daily, fetch_margin_history, analyze_supply_demand
@@ -15,8 +16,11 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# 銘柄マスタ定義
-DEFAULT_STOCKS = {
+# 銘柄保存ファイルのパス
+CUSTOM_STOCKS_FILE = "custom_stocks.json"
+
+# 初期デフォルト銘柄リスト
+INITIAL_STOCKS = {
     "285A": "キオクシアHD",
     "6723": "ルネサスエレクトロニクス",
     "6857": "アドバンテスト",
@@ -24,6 +28,33 @@ DEFAULT_STOCKS = {
     "6920": "レーザーテック",
     "7203": "トヨタ自動車"
 }
+
+def load_stocks() -> dict:
+    """登録銘柄を読み込む"""
+    stocks = INITIAL_STOCKS.copy()
+    if os.path.exists(CUSTOM_STOCKS_FILE):
+        try:
+            with open(CUSTOM_STOCKS_FILE, "r", encoding="utf-8") as f:
+                saved = json.load(f)
+                stocks.update(saved)
+        except Exception:
+            pass
+    return stocks
+
+def save_stocks(stocks: dict):
+    """登録銘柄を保存する"""
+    try:
+        with open(CUSTOM_STOCKS_FILE, "w", encoding="utf-8") as f:
+            json.dump(stocks, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+# セッション状態の初期化
+if "stock_list" not in st.session_state:
+    st.session_state.stock_list = load_stocks()
+
+if "selected_code" not in st.session_state:
+    st.session_state.selected_code = "285A"
 
 # さわやかなモダンUIデザイン用CSS
 st.markdown("""
@@ -38,7 +69,7 @@ st.markdown("""
         background-color: #f8fafc;
     }
     
-    /* 右上の不要なメニュー・フッター・Manage appだけを非表示にし、左上の「>>（サイドバー開閉）」は確実に残す */
+    /* 右上の不要なメニュー・フッター・Manage appを非表示 */
     #MainMenu, footer, .stDeployButton {
         display: none !important;
     }
@@ -57,14 +88,14 @@ st.markdown("""
     .app-header {
         background: linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%);
         color: white;
-        padding: 18px 20px;
+        padding: 16px 18px;
         border-radius: 16px;
         margin-bottom: 16px;
         box-shadow: 0 4px 20px -2px rgba(37, 99, 235, 0.25);
     }
     .app-header h1 {
         color: white !important;
-        font-size: 1.35rem !important;
+        font-size: 1.3rem !important;
         font-weight: 700;
         margin: 0;
         display: flex;
@@ -73,7 +104,7 @@ st.markdown("""
     }
     .app-header p {
         color: #e0f2fe;
-        font-size: 0.8rem;
+        font-size: 0.78rem;
         margin: 4px 0 0 0;
     }
 
@@ -82,7 +113,7 @@ st.markdown("""
         background-color: #fff1f2;
         border-left: 5px solid #f43f5e;
         border-radius: 12px;
-        padding: 14px 16px;
+        padding: 12px 14px;
         margin-bottom: 16px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
@@ -90,13 +121,13 @@ st.markdown("""
         background-color: #f0fdf4;
         border-left: 5px solid #22c55e;
         border-radius: 12px;
-        padding: 14px 16px;
+        padding: 12px 14px;
         margin-bottom: 16px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
     .status-title {
         font-weight: 700;
-        font-size: 0.95rem;
+        font-size: 0.92rem;
         margin-bottom: 4px;
         display: flex;
         align-items: center;
@@ -106,7 +137,7 @@ st.markdown("""
     .status-normal-title { color: #16a34a; }
     .status-body {
         color: #475569;
-        font-size: 0.85rem;
+        font-size: 0.82rem;
         line-height: 1.45;
         margin: 0;
     }
@@ -121,30 +152,30 @@ st.markdown("""
     @media (min-width: 768px) {
         .metric-grid {
             grid-template-columns: repeat(4, 1fr);
-            gap: 16px;
+            gap: 14px;
         }
     }
     .metric-card {
         background: white;
-        padding: 14px;
+        padding: 12px 14px;
         border-radius: 14px;
         border: 1px solid #e2e8f0;
         box-shadow: 0 2px 6px -1px rgba(0, 0, 0, 0.04);
     }
     .metric-label {
-        font-size: 0.75rem;
+        font-size: 0.72rem;
         color: #64748b;
         font-weight: 500;
-        margin-bottom: 4px;
+        margin-bottom: 3px;
     }
     .metric-value {
-        font-size: 1.25rem;
+        font-size: 1.2rem;
         font-weight: 700;
         color: #0f172a;
         margin-bottom: 2px;
     }
     .metric-sub {
-        font-size: 0.72rem;
+        font-size: 0.7rem;
         font-weight: 600;
     }
     .sub-down { color: #ef4444; }
@@ -175,42 +206,53 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# セッション状態の初期化
-if "selected_code" not in st.session_state:
-    st.session_state.selected_code = "285A"
-
-# 1. 画面トップの「銘柄クイック切り替えバー」（スマホでサイドバーを開かなくても即切替可能）
-with st.expander("🔍 銘柄の選択・切替（ここをタップ）", expanded=False):
-    col_sel1, col_sel2 = st.columns([2, 1])
-    with col_sel1:
-        chosen = st.selectbox(
-            "プリセット銘柄",
-            options=list(DEFAULT_STOCKS.keys()),
-            index=list(DEFAULT_STOCKS.keys()).index(st.session_state.selected_code) if st.session_state.selected_code in DEFAULT_STOCKS else 0,
-            format_func=lambda x: f"{x} - {DEFAULT_STOCKS.get(x, x)}"
-        )
-        if chosen != st.session_state.selected_code:
-            st.session_state.selected_code = chosen
-            st.rerun()
-    with col_sel2:
-        custom_input = st.text_input("任意のコード (例: 9984)", "")
-        if st.button("コード指定切替", use_container_width=True) and custom_input:
-            st.session_state.selected_code = custom_input.strip()
-            st.rerun()
-
-# 2. サイドバー（左上の「>>」からも引き続き利用可能）
+# -------------------------------------------------------------
+# ① サイドバー：銘柄追加・管理・API設定
+# -------------------------------------------------------------
 with st.sidebar:
-    st.markdown("### ⚙️ 銘柄選択・詳細設定")
-    sidebar_chosen = st.selectbox(
-        "登録銘柄",
-        options=list(DEFAULT_STOCKS.keys()),
-        index=list(DEFAULT_STOCKS.keys()).index(st.session_state.selected_code) if st.session_state.selected_code in DEFAULT_STOCKS else 0,
-        format_func=lambda x: f"{x} - {DEFAULT_STOCKS.get(x, x)}"
+    st.markdown("### ⚙️ 銘柄の選択と追加")
+    
+    # 登録済みリストから選択
+    stock_options = list(st.session_state.stock_list.keys())
+    current_idx = stock_options.index(st.session_state.selected_code) if st.session_state.selected_code in stock_options else 0
+    
+    chosen_side = st.selectbox(
+        "分析する銘柄",
+        options=stock_options,
+        index=current_idx,
+        format_func=lambda x: f"{x} - {st.session_state.stock_list.get(x, x)}"
     )
-    if sidebar_chosen != st.session_state.selected_code:
-        st.session_state.selected_code = sidebar_chosen
+    if chosen_side != st.session_state.selected_code:
+        st.session_state.selected_code = chosen_side
         st.rerun()
+
+    st.markdown("---")
+    st.markdown("#### ➕ 新しい銘柄を登録")
+    with st.form("add_stock_sidebar_form", clear_on_submit=True):
+        new_code = st.text_input("銘柄コード (例: 9984, 6501)", "").strip().upper()
+        new_name = st.text_input("銘柄名 (例: ソフトバンクG)", "").strip()
+        add_submitted = st.form_submit_button("銘柄リストに追加して分析", use_container_width=True)
         
+        if add_submitted and new_code:
+            display_name = new_name if new_name else f"銘柄 {new_code}"
+            st.session_state.stock_list[new_code] = display_name
+            save_stocks(st.session_state.stock_list)
+            st.session_state.selected_code = new_code
+            st.success(f"{new_code} ({display_name}) を登録しました！")
+            st.rerun()
+
+    # 銘柄削除（デフォルト以外）
+    custom_keys = [k for k in st.session_state.stock_list.keys() if k not in INITIAL_STOCKS]
+    if custom_keys:
+        st.markdown("#### 🗑️ 追加した銘柄の削除")
+        del_target = st.selectbox("削除する銘柄", options=custom_keys, format_func=lambda x: f"{x} - {st.session_state.stock_list[x]}")
+        if st.button("銘柄を削除", use_container_width=True):
+            del st.session_state.stock_list[del_target]
+            save_stocks(st.session_state.stock_list)
+            if st.session_state.selected_code == del_target:
+                st.session_state.selected_code = "285A"
+            st.rerun()
+
     st.markdown("---")
     api_key_input = st.text_input("Gemini API Key (更新用)", type="password")
     if api_key_input:
@@ -218,9 +260,42 @@ with st.sidebar:
             f.write(f"GEMINI_API_KEY={api_key_input}\n")
         st.success("APIキーを更新しました")
 
+# -------------------------------------------------------------
+# ② 画面上部：ワンタップ銘柄切替 ＆ 簡易追加アコーディオン
+# -------------------------------------------------------------
+with st.expander("🔍 銘柄の切替・新規追加（ここをタップ）", expanded=False):
+    col_sel1, col_sel2 = st.columns([1, 1])
+    with col_sel1:
+        st.markdown("**登録済み銘柄から選択**")
+        chosen_top = st.selectbox(
+            "選択",
+            options=stock_options,
+            index=current_idx,
+            format_func=lambda x: f"{x} - {st.session_state.stock_list.get(x, x)}",
+            label_visibility="collapsed"
+        )
+        if chosen_top != st.session_state.selected_code:
+            st.session_state.selected_code = chosen_top
+            st.rerun()
+
+    with col_sel2:
+        st.markdown("**新しい銘柄を即時追加**")
+        with st.form("quick_add_form", clear_on_submit=True):
+            q_code = st.text_input("コード", placeholder="例: 9984", label_visibility="collapsed").strip().upper()
+            q_name = st.text_input("銘柄名 (省略可)", placeholder="銘柄名", label_visibility="collapsed").strip()
+            if st.form_submit_button("追加して表示", use_container_width=True) and q_code:
+                d_name = q_name if q_name else f"銘柄 {q_code}"
+                st.session_state.stock_list[q_code] = d_name
+                save_stocks(st.session_state.stock_list)
+                st.session_state.selected_code = q_code
+                st.rerun()
+
+# -------------------------------------------------------------
+# データ取得 & 分析実行
+# -------------------------------------------------------------
 selected_code = st.session_state.selected_code
 ticker_code = f"{selected_code}.T"
-stock_name = DEFAULT_STOCKS.get(selected_code, f"銘柄 {selected_code}")
+stock_name = st.session_state.stock_list.get(selected_code, f"銘柄 {selected_code}")
 
 # ヘッダー描画
 st.markdown(f"""
@@ -230,14 +305,13 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# データ取得
-with st.spinner(f"【{stock_name} ({selected_code})】のデータを取得中..."):
+with st.spinner(f"【{stock_name} ({selected_code})】の需給データを取得・計算中..."):
     try:
         df_price = fetch_stock_daily(ticker_code, period="6mo")
         df_margin = fetch_margin_history(ticker_code)
         summary = analyze_supply_demand(df_price, df_margin)
     except Exception as e:
-        st.error(f"データ取得エラー: {e}")
+        st.error(f"データ取得エラー: 銘柄コード「{selected_code}」のデータを取得できませんでした。コードが正しいかご確認ください。({e})")
         st.stop()
 
 # ステータス・スワップ警告バナー
