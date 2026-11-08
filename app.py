@@ -25,10 +25,9 @@ DEFAULT_STOCKS = {
     "7203": "トヨタ自動車"
 }
 
-# さわやかなモダンUIデザイン用CSS（スマホ完全最適化）
+# さわやかなモダンUIデザイン用CSS
 st.markdown("""
 <style>
-    /* 全体フォント＆背景 */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap');
     
     html, body, [class*="css"] {
@@ -39,22 +38,28 @@ st.markdown("""
         background-color: #f8fafc;
     }
     
-    /* ヘッダーのStreamlit標準要素（Fork, GitHub, Deployバッジ等）をスッキリ非表示 */
-    header[data-testid="stHeader"] {
-        background-color: transparent !important;
-    }
-    #MainMenu, footer, [data-testid="stToolbar"] {
-        visibility: hidden;
-        display: none;
+    /* 右上の不要なメニュー・フッター・Manage appだけを非表示にし、左上の「>>（サイドバー開閉）」は確実に残す */
+    #MainMenu, footer, .stDeployButton {
+        display: none !important;
     }
     
+    /* サイドバー開閉トグルボタン（>>）を押しやすく目立たせる */
+    [data-testid="stSidebarCollapsedControl"] {
+        display: block !important;
+        visibility: visible !important;
+        background-color: white;
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+        margin: 6px 0 0 6px;
+    }
+
     /* アプリタイトルバー */
     .app-header {
         background: linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%);
         color: white;
         padding: 18px 20px;
         border-radius: 16px;
-        margin-bottom: 20px;
+        margin-bottom: 16px;
         box-shadow: 0 4px 20px -2px rgba(37, 99, 235, 0.25);
     }
     .app-header h1 {
@@ -78,7 +83,7 @@ st.markdown("""
         border-left: 5px solid #f43f5e;
         border-radius: 12px;
         padding: 14px 16px;
-        margin-bottom: 18px;
+        margin-bottom: 16px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
     .status-banner-normal {
@@ -86,7 +91,7 @@ st.markdown("""
         border-left: 5px solid #22c55e;
         border-radius: 12px;
         padding: 14px 16px;
-        margin-bottom: 18px;
+        margin-bottom: 16px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
     .status-title {
@@ -111,7 +116,7 @@ st.markdown("""
         display: grid;
         grid-template-columns: repeat(2, 1fr);
         gap: 10px;
-        margin-bottom: 20px;
+        margin-bottom: 18px;
     }
     @media (min-width: 768px) {
         .metric-grid {
@@ -146,9 +151,9 @@ st.markdown("""
     .sub-up { color: #22c55e; }
     .sub-neutral { color: #64748b; }
 
-    /* タブデザインの洗練 */
+    /* タブデザイン */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
+        gap: 6px;
         background-color: #e2e8f0;
         padding: 4px;
         border-radius: 12px;
@@ -170,19 +175,42 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# サイドバー：銘柄選択・操作
+# セッション状態の初期化
+if "selected_code" not in st.session_state:
+    st.session_state.selected_code = "285A"
+
+# 1. 画面トップの「銘柄クイック切り替えバー」（スマホでサイドバーを開かなくても即切替可能）
+with st.expander("🔍 銘柄の選択・切替（ここをタップ）", expanded=False):
+    col_sel1, col_sel2 = st.columns([2, 1])
+    with col_sel1:
+        chosen = st.selectbox(
+            "プリセット銘柄",
+            options=list(DEFAULT_STOCKS.keys()),
+            index=list(DEFAULT_STOCKS.keys()).index(st.session_state.selected_code) if st.session_state.selected_code in DEFAULT_STOCKS else 0,
+            format_func=lambda x: f"{x} - {DEFAULT_STOCKS.get(x, x)}"
+        )
+        if chosen != st.session_state.selected_code:
+            st.session_state.selected_code = chosen
+            st.rerun()
+    with col_sel2:
+        custom_input = st.text_input("任意のコード (例: 9984)", "")
+        if st.button("コード指定切替", use_container_width=True) and custom_input:
+            st.session_state.selected_code = custom_input.strip()
+            st.rerun()
+
+# 2. サイドバー（左上の「>>」からも引き続き利用可能）
 with st.sidebar:
-    st.markdown("### ⚙️ 銘柄選択・設定")
-    selected_code = st.selectbox(
-        "分析銘柄を選択",
+    st.markdown("### ⚙️ 銘柄選択・詳細設定")
+    sidebar_chosen = st.selectbox(
+        "登録銘柄",
         options=list(DEFAULT_STOCKS.keys()),
-        format_func=lambda x: f"{x} - {DEFAULT_STOCKS[x]}"
+        index=list(DEFAULT_STOCKS.keys()).index(st.session_state.selected_code) if st.session_state.selected_code in DEFAULT_STOCKS else 0,
+        format_func=lambda x: f"{x} - {DEFAULT_STOCKS.get(x, x)}"
     )
-    
-    ticker_input = st.text_input("他の銘柄コードを追加 (例: 7203)", "")
-    if st.button("銘柄切替", use_container_width=True) and ticker_input:
-        selected_code = ticker_input.strip()
-    
+    if sidebar_chosen != st.session_state.selected_code:
+        st.session_state.selected_code = sidebar_chosen
+        st.rerun()
+        
     st.markdown("---")
     api_key_input = st.text_input("Gemini API Key (更新用)", type="password")
     if api_key_input:
@@ -190,19 +218,20 @@ with st.sidebar:
             f.write(f"GEMINI_API_KEY={api_key_input}\n")
         st.success("APIキーを更新しました")
 
+selected_code = st.session_state.selected_code
 ticker_code = f"{selected_code}.T"
 stock_name = DEFAULT_STOCKS.get(selected_code, f"銘柄 {selected_code}")
 
 # ヘッダー描画
 st.markdown(f"""
 <div class="app-header">
-    <h1>📈 需給レーダー <span style="font-size:0.9rem; font-weight:normal; opacity:0.9;">[{selected_code}] {stock_name}</span></h1>
+    <h1>📈 需給レーダー <span style="font-size:0.9rem; font-weight:normal; opacity:0.95;">[{selected_code}] {stock_name}</span></h1>
     <p>株価・出来高・信用残高から「ポジションの入れ替わり（スワップ）」をリアルタイム診断</p>
 </div>
 """, unsafe_allow_html=True)
 
 # データ取得
-with st.spinner(f"データを取得中..."):
+with st.spinner(f"【{stock_name} ({selected_code})】のデータを取得中..."):
     try:
         df_price = fetch_stock_daily(ticker_code, period="6mo")
         df_margin = fetch_margin_history(ticker_code)
@@ -257,7 +286,6 @@ st.markdown(f"""
 tab1, tab2, tab3 = st.tabs(["📊 チャート分析", "🤖 AI需給診断", "📋 信用残高データ"])
 
 with tab1:
-    # 2軸サブプロット（上段: 株価＆VWAP、下段: 信用買い残）
     fig = make_subplots(
         rows=2, cols=1,
         shared_xaxes=True,
@@ -266,7 +294,6 @@ with tab1:
         row_heights=[0.65, 0.35]
     )
     
-    # 1. 株価折れ線
     fig.add_trace(
         go.Scatter(
             x=df_price.index,
@@ -278,7 +305,6 @@ with tab1:
         row=1, col=1
     )
     
-    # 2. 推定平均買値ライン
     fig.add_hline(
         y=summary["vwap_est_buy_price"],
         line_dash="dash",
@@ -290,7 +316,6 @@ with tab1:
         row=1, col=1
     )
     
-    # 3. 信用買い残棒グラフ
     fig.add_trace(
         go.Bar(
             x=df_margin["date"],
@@ -302,28 +327,25 @@ with tab1:
         row=2, col=1
     )
     
-    # スマホ向けレイアウト調整：固定ビューポート
     fig.update_layout(
         height=480,
         margin=dict(l=5, r=10, t=28, b=10),
         paper_bgcolor="white",
         plot_bgcolor="#fafafa",
         showlegend=False,
-        # X軸・Y軸の固定（スマホでのピンチによるズレを防止）
         xaxis=dict(fixedrange=True, gridcolor="#f1f5f9"),
         xaxis2=dict(fixedrange=True, gridcolor="#f1f5f9"),
         yaxis=dict(fixedrange=True, gridcolor="#f1f5f9"),
         yaxis2=dict(fixedrange=True, gridcolor="#f1f5f9")
     )
     
-    # 【最重要】スマホでピンチズーム・ドラッグ移動を発動させない設定
     st.plotly_chart(
         fig,
         use_container_width=True,
         config={
-            "staticPlot": False,       # タップでホバー数値は確認可能
-            "scrollZoom": False,       # スクロールでのズーム無効
-            "displayModeBar": False    # ツールバー（虫眼鏡アイコン等）を非表示
+            "staticPlot": False,
+            "scrollZoom": False,
+            "displayModeBar": False
         }
     )
 
