@@ -424,8 +424,8 @@ with tab1:
     )
 
 with tab2:
-    with st.spinner("AIが需給構造を診断中..."):
-        ai_report = generate_ai_report(summary, stock_name=stock_name)
+    with st.spinner("需給構造を診断中..."):
+        ai_report = generate_ai_report(summary, stock_name=stock_name, code=selected_code)
     st.markdown(ai_report)
 
 with tab3:
