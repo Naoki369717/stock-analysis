@@ -1,77 +1,91 @@
-import os
-from google import genai
-from google.genai import types
+"""
+需給分析診断エンジン (Dynamic Supply & Demand Analysis Engine)
+銘柄ごとの株価・四本値・出来高・信用残高の実数値から、
+動画のロジックに基づく完全個別・動的な診断レポートを自動生成します。
+"""
 
-def generate_ai_report(summary: dict, stock_name: str = "キオクシアHD", api_key: str = None) -> str:
-    """
-    需給分析サマリーをGemini Proに渡し、投資判断レポートを生成する
-    """
-    if not api_key:
-        # .env から読み込み
-        if os.path.exists(".env"):
-            with open(".env", "r", encoding="utf-8") as f:
-                for line in f:
-                    if line.startswith("GEMINI_API_KEY="):
-                        api_key = line.split("=", 1)[1].strip()
-                        break
+def generate_dynamic_report(summary: dict, stock_name: str, code: str) -> str:
+    """銘柄のリアルタイム計算データに基づく動的レポート生成"""
+    
+    price = summary['latest_price']
+    vwap = summary['vwap_est_buy_price']
+    divergence = summary['pnl_divergence_pct']
+    buy_vol = summary['margin_buy_vol']
+    sell_vol = summary['margin_sell_vol']
+    ratio = summary['margin_ratio']
+    buy_change = summary['buy_change']
+    turnover_days = summary['turnover_days']
+    is_swapping = summary['is_swapping']
+    
+    # 乖離状況の判定
+    if divergence < -15:
+        pnl_status = f"現在の株価（{price:,.0f}円）は直近推定平均買値（{vwap:,.0f}円）を **{abs(divergence):.1f}% 下回る大幅な含み損ゾーン** にあります。"
+        res_advice = f"**{vwap:,.0f}円付近** に強い「やれやれ売り（買値撤退売り）」の抵抗帯が形成されており、戻り局面では上値が重くなりやすい構造です。"
+    elif divergence < 0:
+        pnl_status = f"現在の株価（{price:,.0f}円）は推定平均買値（{vwap:,.0f}円）のやや下（{abs(divergence):.1f}% 乖離）に位置しています。"
+        res_advice = f"平均買値の **{vwap:,.0f}円** を明確に上抜けてサポート（下値支持）に転換できるかが反発継続の試金石となります。"
+    else:
+        pnl_status = f"現在の株価（{price:,.0f}円）は推定買値（{vwap:,.0f}円）を上回っており（+{divergence:.1f}%）、直近の買いポジションは全体として **含み益ゾーン** にあります。"
+        res_advice = f"直近エントリー勢の含み損による戻り売り圧力は軽微であり、**{vwap:,.0f}円** が押し目のサポートとして意識されやすい状態です。"
 
-    if not api_key or api_key.startswith("AQ."):
-        # APIキーが無効または未設定の場合は、需給サマリーに基づくルールベースの自動解説を返す
-        return f"""### 🤖 AI需給分析レポート（需給判定エンジン）
+    # 信用倍率と消化日数の判定
+    if turnover_days > 3.0:
+        digest_eval = f"買い残を市場が吸収するのに **約 {turnover_days}日分の出来高** が必要です。消化に時間がかかる水準であり、一過性の買いでは需給が好転しにくい点に注意が必要です。"
+    else:
+        digest_eval = f"買い残の出来高消化日数は **約 {turnover_days}日分** と比較的回転が早く、商いの活況さに対して買い残の重みは限定的です。"
 
-**【現状の需給ステータス】**
-* **銘柄**: {stock_name} (285A)
-* **現在株価**: {summary['latest_price']:,.0f} 円
-* **推定しこりゾーン（直近平均買値）**: 約 {summary['vwap_est_buy_price']:,.0f} 円（現在値より **{abs(summary['pnl_divergence_pct'])}% 高値**）
-* **信用買い残**: {summary['margin_buy_vol']:,.0f} 株（信用倍率 **{summary['margin_ratio']:.2f}倍**）
+    # 信用残増減トレンド
+    if buy_change > 0:
+        trend_comment = f"直近週で信用買い残が **+{buy_change:,.0f}株増加** しており、レバレッジをかけた新規買い・押し目狙いが活発に流入しています。"
+    else:
+        trend_comment = f"直近週で信用買い残が **{buy_change:,.0f}株減少** しており、期日返済や手仕舞い売りなどによるポジション整理が進んでいます。"
+
+    # スワップ判定の詳細
+    if is_swapping:
+        swap_detail = f"""
+* ⚠️ **ポジションの入れ替わり（スワップ）発生**:
+  株価下落トレンド中にもかかわらず信用買い残が消化されずに高止まりしています。
+  これは「以前の高値で捕まった投資家の損切り」と「割安と見て新規参入したリバウンド狙い勢」のポジションが交代しているだけであり、**市場全体のしこり玉（将来の売り圧力）が解消されていない** 状態を示します。
+"""
+    else:
+        swap_detail = f"""
+* ℹ️ **スワップ傾向**:
+  現時点では極端な高値組と底値組のしこり入れ替わりは検知されておらず、需給バランスは通常の推移（または順調な消化局面）を保っています。
+"""
+
+    report = f"""### 📊 【{code}】{stock_name} 需給診断レポート
+
+#### 1. 需給ステータス総括
+* **現在株価**: **{price:,.0f} 円**
+* **直近推定平均買値 (VWAP)**: **{vwap:,.0f} 円** (現在値との乖離: **{divergence:+.1f}%**)
+* **信用倍率**: **{ratio:.2f} 倍** (売残: {sell_vol:,.0f} 株 / 買残: {buy_vol:,.0f} 株)
+* **買い残増減**: **{buy_change:+,.0f} 株**
 
 ---
 
-**【需給診断と見通し】**
-1. **ポジションの入れ替わり（スワップ）について**:
-   * {summary['swap_comment']}
-   * 株価は直近高値から大きく下落していますが、信用買い残は **約4,800万株** と依然として高水準を維持しています。これは初期に高値（13,000円〜18,000円台）で買った投資家が損切り・決済する一方で、急落を「押し目」と見た新たな個人レバレッジ勢が参入している構図です。
+#### 2. ポジション構造と「しこり玉」の分析
+{pnl_status}
+{trend_comment}
+{swap_detail}
 
-2. **上値の重さと戻り売り圧力**:
-   * 現在値（{summary['latest_price']:,.0f}円）に対して、直近1ヶ月の出来高加重平均（VWAP）は **{summary['vwap_est_buy_price']:,.0f}円** に位置しています。
-   * 株価が自律反発して10,000円〜12,000円台に近づいた場合、含み損を抱えたホルダーからの「やれやれ売り（買値撤退売り）」が強く出やすい需給構造になっています。
+---
 
-3. **今後の注目ポイント（底入れの条件）**:
-   * **信用買い残の明確な減少**: 買い残が4,000万株を大きく割り込むような投げ売り（セリングクライマックス）が一巡すること。
-   * **出来高の急増を伴う大陽線**: 新陳代謝を完了させ、売り圧力を全て吸収する大口の現物買いが入ること。
+#### 3. 上値抵抗帯と出来高消化力
+* **抵抗帯の目安**:
+  {res_advice}
+* **需給消化力（出来高比）**:
+  {digest_eval}
+
+---
+
+#### 4. 今後の注目シグナル
+1. **推定買値ライン（{vwap:,.0f}円）へのアプローチ**:
+   株価がこの水準に達した際、出来高を伴って突破できるか、あるいは「やれやれ売り」に押されて跳ね返されるかを注視。
+2. **信用買い残の推移**:
+   {f'買い残（現在 {buy_vol:,.0f}株）の減少傾向が確認できるまで、リバウンド狙いの早すぎるエントリーはリスクを伴います。' if is_swapping else '買い残の急増がないか（新規の過熱がないか）を引き続き監視。'}
 """
+    return report
 
-    try:
-        client = genai.Client(api_key=api_key)
-        prompt = f"""
-あなたは株式需給分析とマーケットアナリストの専門家です。
-YouTube動画『キオクシアの信用買い残は減ったのではなく入れ替わった』で解説されているような、
-「信用買い残の増減と株価推移、ポジションの入れ替わり（スワップ）、含み損を抱えたしこり玉」に着目した投資見通しレポートを作成してください。
-
-【対象銘柄】
-銘柄: {stock_name}
-銘柄コード: 285A
-
-【需給データ】
-- 基準日: {summary['latest_date']}
-- 現在株価: {summary['latest_price']:,.0f} 円
-- 直近1ヶ月推定平均買値(VWAP): {summary['vwap_est_buy_price']:,.0f} 円 (現在値との乖離: {summary['pnl_divergence_pct']:+.2f}%)
-- 信用買い残: {summary['margin_buy_vol']:,.0f} 株 (前週比: {summary['buy_change']:+,.0f} 株)
-- 信用売り残: {summary['margin_sell_vol']:,.0f} 株
-- 信用倍率: {summary['margin_ratio']:.2f} 倍
-- 買い残の出来高消化日数: {summary['turnover_days']} 日分
-- スワップ検知状況: {summary['swap_comment']}
-
-以下の構成で、個人投資家がスマホで読みやすいMarkdown形式で詳しく解説してください：
-1. 需給サマリー（現状の需給バランス判定）
-2. 信用買い残の「中身」の分析（スワップやしこり玉の状況）
-3. 今後の株価上値の抵抗帯・戻り売りリスク
-4. 反転・底打ちを見極めるための具体的シグナル
-"""
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt
-        )
-        return response.text
-    except Exception as e:
-        return f"Gemini API呼び出し中にエラーが発生しました ({str(e)})。需給エンジンによる分析を優先表示します。"
+def generate_ai_report(summary: dict, stock_name: str = "キオクシアHD", code: str = "285A", api_key: str = None) -> str:
+    # 常に銘柄ごとの実データに基づいた動的レポートを返す
+    return generate_dynamic_report(summary, stock_name, code)
